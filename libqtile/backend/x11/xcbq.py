@@ -405,18 +405,24 @@ class RandR:
 
     def query_crtcs(self, root):
         infos = []
+        primary = self.ext.GetOutputPrimary(root).reply().output
         for output in self.ext.GetScreenResources(root).reply().outputs:
             info = self.ext.GetOutputInfo(output, xcffib.CurrentTime).reply()
 
-            # ignore disconnected monitors
-            if info.connection != xcffib.randr.Connection.Connected:
-                continue
+            # ignore outputs with no monitor plugged in
             if not info.crtc:
                 continue
 
             crtc_info = self.ext.GetCrtcInfo(info.crtc, xcffib.CurrentTime).reply()
 
-            infos.append(ScreenRect(crtc_info.x, crtc_info.y, crtc_info.width, crtc_info.height))
+            rect = ScreenRect(crtc_info.x, crtc_info.y, crtc_info.width, crtc_info.height)
+
+            # prepend the primary output, append all others in screen
+            # resources order
+            if primary == output:
+                infos.insert(0, rect)
+            else:
+                infos.append(rect)
         return infos
 
     def enable_screen_change_notifications(self, conn):
@@ -763,12 +769,19 @@ class Painter:
                     height_ratio = screen.height / image_h
                     context.translate(-(image_w * height_ratio - screen.width) // 2, 0)
                     context.scale(height_ratio)
+                context.set_source_surface(image)
             elif mode == "stretch":
                 context.scale(
                     sx=screen.width / image.get_width(),
                     sy=screen.height / image.get_height(),
                 )
-            context.set_source_surface(image)
+                context.set_source_surface(image)
+            elif mode == "center":
+                target_x = (screen.width - image.get_width()) / 2
+                target_y = (screen.height - image.get_height()) / 2
+                context.set_source_surface(image, x=target_x, y=target_y)
+            else:
+                context.set_source_surface(image)
             context.paint()
 
         surface.finish()

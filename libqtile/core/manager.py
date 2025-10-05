@@ -52,11 +52,19 @@ from libqtile.core.state import QtileState
 from libqtile.dgroups import DGroups
 from libqtile.extension.base import _Extension
 from libqtile.group import _Group
+from libqtile.interactive.repl import repl_server
 from libqtile.log_utils import logger
 from libqtile.resources.sleep import inhibitor
 from libqtile.scratchpad import ScratchPad
 from libqtile.scripts.main import VERSION
-from libqtile.utils import cancel_tasks, get_cache_dir, lget, remove_dbus_rules, send_notification
+from libqtile.utils import (
+    cancel_tasks,
+    create_task,
+    get_cache_dir,
+    lget,
+    remove_dbus_rules,
+    send_notification,
+)
 from libqtile.widget.base import _Widget
 
 if TYPE_CHECKING:
@@ -334,6 +342,7 @@ class Qtile(CommandObject):
 
             for screen in self.screens:
                 screen.finalize_gaps()
+
         except:  # noqa: E722
             logger.exception("exception during finalize")
         hook.clear()
@@ -433,9 +442,7 @@ class Qtile(CommandObject):
 
         for screen in self.screens:
             if screen not in screens:
-                for gap in screen.gaps:
-                    if isinstance(gap, bar.Bar) and gap.window:
-                        gap.finalize()
+                screen.finalize_gaps()
 
         self.screens = screens
 
@@ -1862,3 +1869,14 @@ class Qtile(CommandObject):
     def fire_user_hook(self, hook_name: str, *args: Any) -> None:
         """Fire a custom hook."""
         hook.fire(f"user_{hook_name}", *args)
+
+    @expose_command()
+    def start_repl_server(self, locals_dict: dict[str, Any] = dict()) -> None:
+        """Start the REPL server."""
+        _locals = {"qtile": self, **locals_dict}
+        create_task(repl_server.start(locals_dict=_locals))
+
+    @expose_command()
+    def stop_repl_server(self) -> None:
+        """Stop the REPL server."""
+        create_task(repl_server.stop())
