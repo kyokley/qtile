@@ -1,30 +1,3 @@
-# Copyright (c) 2012-2015 Tycho Andersen
-# Copyright (c) 2013 xarvh
-# Copyright (c) 2013 horsik
-# Copyright (c) 2013-2014 roger
-# Copyright (c) 2013 Tao Sauvage
-# Copyright (c) 2014 ramnes
-# Copyright (c) 2014 Sean Vig
-# Copyright (c) 2014 Adi Sieker
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-#
 from __future__ import annotations
 
 import os.path
@@ -551,31 +524,31 @@ class Screen(CommandObject):
     @property
     def dx(self) -> int:
         if self.left and getattr(self.left, "reserve", True):
-            return self.x + self.left.size
+            return self.x + self.left.fullsize
         return self.x
 
     @property
     def dy(self) -> int:
         if self.top and getattr(self.top, "reserve", True):
-            return self.y + self.top.size
+            return self.y + self.top.fullsize
         return self.y
 
     @property
     def dwidth(self) -> int:
         val = self.width
         if self.left and getattr(self.left, "reserve", True):
-            val -= self.left.size
+            val -= self.left.fullsize
         if self.right and getattr(self.right, "reserve", True):
-            val -= self.right.size
+            val -= self.right.fullsize
         return val
 
     @property
     def dheight(self) -> int:
         val = self.height
         if self.top and getattr(self.top, "reserve", True):
-            val -= self.top.size
+            val -= self.top.fullsize
         if self.bottom and getattr(self.bottom, "reserve", True):
-            val -= self.bottom.size
+            val -= self.bottom.fullsize
         return val
 
     def get_rect(self) -> ScreenRect:

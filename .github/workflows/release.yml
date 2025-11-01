@@ -5,6 +5,9 @@ on:
     tags: ['*']
   release:
     types: [published]
+permissions:
+  id-token: write
+  contents: read
 jobs:
   build-wayland:
     name: Build Wayland libraries
@@ -177,7 +180,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_28_x86_64
     strategy:
       matrix:
-        python-version: ["cp3.10", "cp3.11", "cp3.12"]
+        python-version: ["cp3.12", "cp3.13"]
     steps:
       - name: Install dependencies
         run: |
@@ -203,7 +206,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Set environment variables
         run: |
-          PYTHON_ROOT=$(find /opt/python -name ${PYTHON_VERSION/./}-*)
+          PYTHON_ROOT=$(find /opt/python -name ${PYTHON_VERSION/./}-${PYTHON_VERSION/./})
           echo "${PYTHON_ROOT}/bin" >> $GITHUB_PATH
         shell: bash
         env:
@@ -211,7 +214,7 @@ jobs:
       - name: Build wheels
         run: |
           python -m pip install cffi build auditwheel
-          python -m build --config-setting backend=wayland --wheel .
+          python -m build --wheel .
           ls dist/
           auditwheel show dist/qtile-*.whl
           auditwheel repair --plat manylinux_2_28_x86_64 -w output_wheels dist/qtile-*.whl
@@ -226,7 +229,7 @@ jobs:
     needs: build-wheel
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.13"]
     steps:
       - name: Download wheels
         if: ${{ matrix.manual-version == '' }}
@@ -251,14 +254,14 @@ jobs:
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_28_x86_64
     env:
-      python-version: "cp3.12"
+      python-version: "cp3.13"
     steps:
       - name: Install dependencies
         run: dnf install -y cairo-devel libffi-devel
       - uses: actions/checkout@v4
       - name: Set environment variables
         run: |
-          PYTHON_ROOT=$(find /opt/python -name ${PYTHON_VERSION/./}-*)
+          PYTHON_ROOT=$(find /opt/python -name ${PYTHON_VERSION/./}-${PYTHON_VERSION/./})
           echo "${PYTHON_ROOT}/bin" >> $GITHUB_PATH
         shell: bash
         env:
@@ -278,7 +281,7 @@ jobs:
     needs: [test-wheel, build-source]
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.13"]
     steps:
       - name: Download wheels
         if: ${{ matrix.manual-version == '' }}
@@ -295,15 +298,10 @@ jobs:
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         if: github.event_name == 'release'
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
       - name: Publish package to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         if: github.event_name == 'push'
         with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
   upload-source:
@@ -311,7 +309,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-wheel, build-source]
     env:
-      python-version: "cp3.12"
+      python-version: "cp3.13"
     steps:
       - name: Download source
         uses: actions/download-artifact@v4
@@ -321,14 +319,9 @@ jobs:
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         if: github.event_name == 'release'
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
       - name: Publish package to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         if: github.event_name == 'push'
         with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true

@@ -1,26 +1,10 @@
-# Copyright (C) 2015, zordsdavini
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program. If not, see <http://www.gnu.org/licenses/>.
-
 import os
-import subprocess
 from functools import partial
 
-from libqtile.widget import base
+from libqtile.widget.generic_poll_text import GenPollCommand
 
 
-class Moc(base.ThreadPoolText):
+class Moc(GenPollCommand):
     """A simple MOC widget.
 
     Show the artist and album of now listening song and allow basic mouse
@@ -40,7 +24,8 @@ class Moc(base.ThreadPoolText):
     ]
 
     def __init__(self, **config):
-        base.ThreadPoolText.__init__(self, "", **config)
+        config["cmd"] = ["mocp", "-i"]
+        GenPollCommand.__init__(self, **config)
         self.add_defaults(Moc.defaults)
         self.status = ""
         self.local = None
@@ -48,17 +33,13 @@ class Moc(base.ThreadPoolText):
         self.add_callbacks(
             {
                 "Button1": self.play,
-                "Button4": partial(subprocess.Popen, ["mocp", "-f"]),
-                "Button5": partial(subprocess.Popen, ["mocp", "-r"]),
+                "Button4": partial(self.call_process, ["mocp", "-f"]),
+                "Button5": partial(self.call_process, ["mocp", "-r"]),
             }
         )
 
-    def get_info(self):
+    def get_info(self, output):
         """Return a dictionary with info about the current MOC status."""
-        try:
-            output = self.call_process(["mocp", "-i"])
-        except subprocess.CalledProcessError as err:
-            output = err.output
         if output.startswith("State"):
             output = output.splitlines()
             info = {"State": "", "File": "", "SongTitle": "", "Artist": "", "Album": ""}
@@ -70,9 +51,9 @@ class Moc(base.ThreadPoolText):
                         break
             return info
 
-    def now_playing(self):
+    def parse(self, output):
         """Return a string with the now playing info (Artist - Song Title)."""
-        info = self.get_info()
+        info = self.get_info(output)
         now_playing = ""
         if info:
             status = info["State"]
@@ -101,10 +82,6 @@ class Moc(base.ThreadPoolText):
     def play(self):
         """Play music if stopped, else toggle pause."""
         if self.status in ("PLAY", "PAUSE"):
-            subprocess.Popen(["mocp", "-G"])
+            self.call_process(["mocp", "-G"])
         elif self.status == "STOP":
-            subprocess.Popen(["mocp", "-p"])
-
-    def poll(self):
-        """Poll content for the text box."""
-        return self.now_playing()
+            self.call_process(["mocp", "-p"])

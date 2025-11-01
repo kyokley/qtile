@@ -1,25 +1,3 @@
-# Copyright (c) 2009 Aldo Cortesi
-# Copyright (c) 2011 Florian Mounier
-# Copyright (c) 2011 Anshuman Bhaduri
-# Copyright (c) 2012 Tycho Andersen
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
 import asyncio
 from multiprocessing import Value
 
@@ -50,9 +28,7 @@ class NoArgCall(Call):
 @pytest.fixture
 def hook_fixture():
     libqtile.log_utils.init_log()
-
     yield
-
     hook.clear()
 
 
@@ -600,22 +576,21 @@ def test_client_name_updated(manager_nospawn):
 
 
 @pytest.mark.usefixtures("hook_fixture")
-def test_client_urgent_hint_changed(manager_nospawn, backend_name):
-    if backend_name == "wayland":
-        pytest.skip("Core not listening to XDG request_activate_event ?")
-
+def test_client_urgent_hint_changed(manager_nospawn):
     class ClientUrgentHintChangedConfig(BareConfig):
         groups = [
             config.Group("a"),
             config.Group("b", matches=[Match(title="Test Client")]),
         ]
-        focus_on_window_activation = "urgent"
         test = CallWindow()
         hook.subscribe.client_urgent_hint_changed(test)
 
     manager_nospawn.start(ClientUrgentHintChangedConfig)
     manager_nospawn.test_window("Test Client", urgent_hint=True)
     assert_window(manager_nospawn, "Test Client")
+    # Get urgency of the window
+    _, urgent = manager_nospawn.c.eval("list(self.windows_map.values())[0].urgent")
+    assert urgent == "True"
 
 
 class CallLayoutGroup:
@@ -737,3 +712,78 @@ def test_current_screen_change(manager_nospawn):
 
     manager_nospawn.c.prev_screen()
     assert_inc_calls(3)
+
+
+@pytest.mark.usefixtures("hook_fixture")
+def test_transient_hooks_syncronous():
+    def t_hook():
+        return True
+
+    def group_window(value):
+        return value == 2
+
+    hook.subscribe.startup(t_hook)
+    assert len(hook.subscriptions["qtile"]["startup"]) == 1
+    hook.fire("startup")
+    assert len(hook.subscriptions["qtile"]["startup"]) == 0
+
+    hook.subscribe.group_window_add(group_window)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 1
+    hook.fire("group_window_add", 1)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 1
+    hook.fire("group_window_add", 2)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 0
+
+
+@pytest.mark.usefixtures("hook_fixture")
+def test_transient_hooks_asyncronous():
+    async def t_hook():
+        return True
+
+    async def group_window(value):
+        return value == 2
+
+    hook.subscribe.startup(t_hook)
+    assert len(hook.subscriptions["qtile"]["startup"]) == 1
+    hook.fire("startup")
+    assert len(hook.subscriptions["qtile"]["startup"]) == 0
+
+    hook.subscribe.group_window_add(group_window)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 1
+    hook.fire("group_window_add", 1)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 1
+    hook.fire("group_window_add", 2)
+    assert len(hook.subscriptions["qtile"]["group_window_add"]) == 0
+
+
+@pytest.mark.usefixtures("hook_fixture")
+def test_transient_hooks_coroutine():
+    def len_hooks():
+        return len(hook.subscriptions["qtile"]["startup"])
+
+    async def wrapper():
+        async def t_hook():
+            return True
+
+        hook.subscribe.startup(t_hook())
+        assert len_hooks() == 1
+        hook.fire("startup")
+
+        # We need to cal asyncio.sleep to give the coroutine the
+        # opportunity to run. The first sleep should be enough
+        # but we add some extra loops to be safe.
+        count = 0
+        while count < 10:
+            if len_hooks() == 0:
+                break
+            await asyncio.sleep(0.1)
+            count += 1
+
+        # We only get here if we haven't broken out of the loop
+        else:
+            assert False
+
+        # Explicit confirmation that the hooks have been cleared
+        assert len(hook.subscriptions["qtile"]["startup"]) == 0
+
+    asyncio.run(wrapper())

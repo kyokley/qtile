@@ -181,6 +181,7 @@ class TestManager:
         return os.read(self.logspipe, 64 * 1024).decode("utf-8")
 
     def start(self, config_class, no_spawn=False, state=None):
+        multiprocessing.set_start_method("fork", force=True)
         readlogs, writelogs = os.pipe()
         rpipe, wpipe = multiprocessing.Pipe()
 
@@ -190,6 +191,7 @@ class TestManager:
                 os.environ.pop("WAYLAND_DISPLAY", None)
                 kore = self.backend.create()
                 os.environ.update(self.backend.env)
+                from libqtile.core.lifecycle import lifecycle
 
                 init_log(self.log_level)
                 os.close(readlogs)
@@ -205,6 +207,7 @@ class TestManager:
                     no_spawn=no_spawn,
                     state=state,
                 ).loop()
+                lifecycle._atexit()
             except Exception:
                 wpipe.send(traceback.format_exc())
 
@@ -365,12 +368,15 @@ class TestManager:
         Windows created with this method must have their process killed explicitly, no
         matter what type they are.
         """
+        os.environ.pop("GDK_BACKEND", None)
         python = sys.executable
         path = Path(__file__).parent / "scripts" / "window.py"
         wmclass = "dialog" if floating else "TestWindow"
         args = [python, path, "--name", wmclass, name, wm_type, new_title]
         if urgent_hint:
             args.append("urgent_hint")
+            # GDK urgency hint is only available in x11
+            os.environ["GDK_BACKEND"] = "x11"
         if export_sni:
             args.append("export_sni_interface")
         return self._spawn_window(*args)

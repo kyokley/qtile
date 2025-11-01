@@ -123,50 +123,26 @@ irc.oftc.net).
 Running tests locally
 ---------------------
 
-This section gives an overview about ``tox`` so that you don't have to search
-`its documentation <https://tox.readthedocs.io/en/latest/>`_ just to get
-started.
+You can run our various CI bits locally with:
 
-Checks are grouped in so-called ``environments``. Some of them are configured to
-check that the code works (the usual unit test, e.g. ``py39``, ``pypy3``),
-others make sure that your code conforms to the style guide (``pep8``,
-``codestyle``, ``mypy``). A third kind of test verifies that the documentation
-and packaging processes work (``docs``, ``docstyle``, ``packaging``).
+.. code-block:: bash
 
-We have configured ``tox`` to run the full suite of tests whenever a pull request
-is submitted/updated. To reduce the amount of time taken by these tests, we have
-created separate environments for both python versions and backends (e.g. tests for
-x11 and wayland run in parallel for each python version that we currently support).
+    make lint  # to run the pre-commit checks
+    make check  # to run both backends for the minimum python version
+    make QTILE_CI_PYTHON=3.13 QTILE_CI_BACKEND=x11  # to run a specific backend/python version combination
+    uv run --python=3.13 pytest --backend=wayland ./test/widgets/test_widgetbox.py::test_widgetbox_widget # to run a specific test
 
-These environments were designed with automation in mind so there are separate
-``test`` environments which should be used for running qtile's tests locally. By default,
-tests will only run on x11 backend (but see below for information on how to set the
-backend).
+See ``.github/workflows/ci.yml`` for the full matrix of supported
+python+backend versions. All of these will matter, but for most changes it is
+only necessary to run one set locally to confirm the change is correct.
 
-The following examples show how to run tests locally:
-   * To run the functional tests, use ``tox -e test``. You can specify to only
-     run a specific test file or even a specific test within that file with
-     the following commands:
+.. important::
 
-     .. code-block:: bash
-
-        tox -e test # Run all tests in default python version
-        tox -e test -- -x test/widgets/test_widgetbox.py  # run a single file
-        tox -e test -- -x test/widgets/test_widgetbox.py::test_widgetbox_widget
-        tox -e test -- --backend=wayland --backend=x11  # run tests on both backends
-        tox -e test-both  # same as above 
-        tox -e test-wayland  # Just run tests on wayland backend
-
-   * To run style and building checks, use ``tox -e docs,packaging,pep8,...``.
-     You can use ``-p auto`` to run the environments in parallel.
-
-     .. important::
-
-        The CI is configured to run all the environments. Hence it can be time-
-        consuming to make all the tests pass. As stated above, pull requests
-        that don't pass the tests are considered incomplete. Don't forget that
-        this does not only include the functionality, but the style, typing
-        annotations (if necessary) and documentation as well!
+    The CI is configured to run all the environments. Hence it can be time-
+    consuming to make all the tests pass. As stated above, pull requests
+    that don't pass the tests are considered incomplete. Don't forget that
+    this does not only include the functionality, but the style, typing
+    annotations (if necessary) and documentation as well!
 
 Writing migrations
 ------------------
@@ -209,49 +185,45 @@ Recommended Resources for Getting Started with Wayland Development
 Source Code Repositories
 ----------------------------
 
+The following are some repositories with useful Wayland source code:
+
 * `wlroots <https://gitlab.freedesktop.org/wlroots/wlroots>`_
 
-  Pluggable, composable, unopinionated modules for building a Wayland compositor —
-  or about 60,000 lines of code you were going to write anyway.
+  The Wayland library we use. Useful documentation is in header files.
 
 * `TinyWL <https://gitlab.freedesktop.org/wlroots/wlroots/-/tree/master/tinywl>`_
 
-  A minimal Wayland compositor built with wlroots.
-  Best starting point for learning wlroots by example.
+  A minimal Wayland compositor built with Wlroots.
 
 * `DWL <https://codeberg.org/dwl/dwl>`_
 
   A compact, hackable Wayland compositor inspired by ``dwm``.
-  Focused on minimalism and suckless philosophy, built on wlroots.
 
 * `Sway <https://github.com/swaywm/sway>`_
 
   A tiling Wayland compositor and drop-in replacement for i3.
-  Great example of a full-featured, mature compositor built on wlroots.
 
 * `LabWC <https://github.com/labwc/labwc>`_
 
   A wlroots-based window-stacking compositor for Wayland, inspired by Openbox.
 
-  It is light-weight and independent with a focus on simply stacking windows well and rendering some window decorations. 
-  It takes a no-bling/frills approach and says no to features such as animations. 
-  It relies on clients for panels, screenshots, wallpapers and so on to create a full desktop environment.
-
 * `weston <https://gitlab.freedesktop.org/wayland/weston/-/tree/main/>`_
 
-  The reference Wayland compositor. Overengineered for some, but shows "the correct way" to do things.
+  The reference Wayland compositor.
 
 * `River <https://github.com/riverwm/river>`_
 
-  A dynamic tiling Wayland compositor that's minimal, written in C and based on wlroots. Less bloated than sway, more experimental than dwl.
+  A dynamic tiling Wayland compositor written in Zig.
 
 Articles & Documentation
 ----------------------------
 
-* `Wayland Architecture Overview <https://wayland.freedesktop.org/architecture.html>`_ - Official architectural documentation
+* `The Wayland Book <https://wayland-book.com/>`_ - An introduction to Wayland
+* `Wayland Architecture Overview <https://wayland.freedesktop.org/architecture.html>`_ - Wayland architecture
 * `Protocol Extensions <https://wayland.app/>`_ - Interactive protocol browser and documentation
-* `wlroots Documentation <https://gitlab.freedesktop.org/wlroots/wlroots/-/wikis/home>`_ - Official wlroots wiki and docs
-* `The Wayland Book <https://wayland-book.com/>`_ — *A comprehensive introduction to Wayland and how it works.*
+* `wlroots Documentation <https://wlroots.pages.freedesktop.org/wlroots/>`_ - Wlroots header file docs as HTML
+
+Some outdated/old resources but that still are useful:
 * `Introduction to Wayland <https://drewdevault.com/2017/06/10/Introduction-to-Wayland.html>`_ by Drew DeVault
 * **Wayland Compositor Series by Drew DeVault:**
 
@@ -263,92 +235,9 @@ Articles & Documentation
 * `Wayland Shells <https://drewdevault.com/2018/07/29/Wayland-shells.html>`_
 * `Intro to Damage Tracking <https://emersion.fr/blog/2019/intro-to-damage-tracking/>`_ by emersion
 
-Development Tools
---------------------
-
-* `wayland-debug <https://gitlab.freedesktop.org/wayland/wayland/-/tree/main/debug>`_
-
-  Debugging tool for inspecting Wayland protocol traffic. Invaluable for compositor/client debugging.
-
-* `wayland-protocols <https://gitlab.freedesktop.org/wayland/wayland-protocols>`_
-
-  Collection of extended Wayland protocols (xdg-shell, layer-shell, etc). Essential when implementing desktop-like behaviors.
-
-* `wlr-protocols <https://gitlab.freedesktop.org/wlroots/wlr-protocols>`_
-
-  Custom/proposed protocols used by wlroots-based compositors (e.g., for gamma control, foreign-toplevel, screencopy).
-
-* `wf-recorder <https://github.com/ammen99/wf-recorder>`_
-
-  Wayland screen recorder compatible with wlroots compositors. Great for demos and debugging output.
-
-Libraries and Helpers
--------------------------
-
-* `xwayland <https://gitlab.freedesktop.org/xorg/xserver/-/tree/master/hw/xwayland/>`_
-
-  Lets X11 clients run inside a Wayland session. Needed for legacy app support in your compositor.
-
-* `Pixman <https://www.pixman.org/>`_
-
-  Low-level pixel manipulation library used by wlroots. Useful if you're doing custom rendering or damage handling.
-
-* `Cairo <https://www.cairographics.org/>`_
-
-  2D graphics library sometimes used for rendering surfaces in compositors or client UIs.
-
 Video & Talks
 ----------------
 
 * `Wayland Explained by Daniel Stone (FOSDEM) <https://www.youtube.com/watch?v=RIctzAQOe44>`_
 
-  Excellent conceptual breakdown of Wayland internals from a veteran contributor.
-
 * `Drew DeVault - Building Wayland desktop components with layer shell <https://www.youtube.com/watch?v=VuRXHJu5Kmg>`_
-
-  Demonstration of the wlroots layer shell, examples of where it's useful from lead developer of `SwayWM <https://github.com/swaywm/sway>`_.
-
-Reverse Engineering Examples
--------------------------------
-
-* `wayland-utils <https://gitlab.freedesktop.org/wayland/wayland-utils>`_
-
-  Includes tools like ``wayland-info`` that help inspect running compositors and protocols.
-
-Related Projects & Alternatives
------------------------------------
-
-* `WLC <https://github.com/Cloudef/wlc>`_ (archived but insightful)
-
-  Predecessor of wlroots — still interesting to read for historical and design insights.
-
-* `Mir <https://github.com/MirServer/mir>`_
-
-  Canonical's alternative Wayland compositor library — not wlroots-based but valuable for contrast.
-
-* `Smithay <https://github.com/smithay/smithay>`_
-
-  A compositor library in Rust, parallel to wlroots. Good if you want to understand differences in approach (e.g. memory safety).
-
-Qtile-Specific Additions
-----------------------------
-
-* `qtile-wayland issues <https://github.com/qtile/qtile/issues?q=is%3Aissue+wayland>`_ - Current Wayland-related issues and discussions
-
-Our Goal — C-based Qtile Wayland Backend
---------------------------------------------
-
-* `Qtile WayC <https://github.com/qtile/qtile/tree/wayc>`_
-
-  Ongoing effort to rewrite Qtile's Wayland backend in C using wlroots directly.
-
-  **Why?**
-
-  * Wlroots changes → requires tracking upstream C changes
-  * Updating ``pywlroots`` for new APIs
-  * Translating C API semantics into Python
-  * Then updating Qtile to match those changes
-
-  Doing it in C cuts through all that indirection and brings more control.
-
-* `Join Wayland development discussion on Discord <https://discord.com/channels/955163559086665728/1383006376695173230>`_

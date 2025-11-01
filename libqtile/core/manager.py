@@ -1,23 +1,3 @@
-# Copyright (c) 2008, Aldo Cortesi. All rights reserved.
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 from __future__ import annotations
 
 import asyncio
@@ -32,6 +12,7 @@ import signal
 import socket
 import subprocess
 import tempfile
+import time
 from collections import defaultdict
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -47,7 +28,7 @@ from libqtile.command.interface import IPCCommandServer, QtileCommandInterface
 from libqtile.config import Click, Drag, Key, KeyChord, Match, Mouse, Rule, Screen, ScreenRect
 from libqtile.config import ScratchPad as ScratchPadConfig
 from libqtile.core.lifecycle import lifecycle
-from libqtile.core.loop import LoopContext, QtileEventLoopPolicy
+from libqtile.core.loop import LoopContext
 from libqtile.core.state import QtileState
 from libqtile.dgroups import DGroups
 from libqtile.extension.base import _Extension
@@ -58,7 +39,6 @@ from libqtile.resources.sleep import inhibitor
 from libqtile.scratchpad import ScratchPad
 from libqtile.scripts.main import VERSION
 from libqtile.utils import (
-    cancel_tasks,
     create_task,
     get_cache_dir,
     lget,
@@ -113,10 +93,21 @@ class Qtile(CommandObject):
         self.screens: list[Screen] = []
 
         libqtile.init(self)
+        libqtile.event_loop = asyncio.new_event_loop()
 
-        self._stopped_event: asyncio.Event | None = None
+        self._stopped_event: asyncio.Event = asyncio.Event()
 
         self.server = IPCCommandServer(self)
+
+        self.locked = False
+        hook.subscribe.locked(self.lock)
+        hook.subscribe.unlocked(self.unlock)
+
+    def lock(self) -> None:
+        self.locked = True
+
+    def unlock(self) -> None:
+        self.locked = False
 
     def load_config(self, initial: bool = False) -> None:
         try:
@@ -212,7 +203,7 @@ class Qtile(CommandObject):
         return socket_path
 
     def loop(self) -> None:
-        asyncio.run(self.async_loop())
+        asyncio.run(self.async_loop(), loop_factory=lambda: libqtile.event_loop)
 
     async def async_loop(self) -> None:
         """Run the event loop
@@ -220,9 +211,6 @@ class Qtile(CommandObject):
         Finalizes the Qtile instance on exit.
         """
         self._eventloop = asyncio.get_running_loop()
-        # Set the event loop policy to facilitate access to main event loop
-        asyncio.set_event_loop_policy(QtileEventLoopPolicy(self))
-        self._stopped_event = asyncio.Event()
         self.core.qtile = self
         self.load_config(initial=True)
         self.core.setup_listener()
@@ -251,6 +239,8 @@ class Qtile(CommandObject):
                 ),
             ):
                 await self._stopped_event.wait()
+                if lifecycle.behavior != lifecycle.behavior.RESTART:
+                    await self.graceful_shutdown()
         finally:
             self.finalize()
             self.core.remove_listener()
@@ -259,8 +249,26 @@ class Qtile(CommandObject):
         hook.fire("shutdown")
         lifecycle.behavior = lifecycle.behavior.TERMINATE
         lifecycle.exitcode = exitcode
-        self.core.graceful_shutdown()
         self._stop()
+
+    def normal_windows(self) -> list[base.WindowType]:
+        return list(
+            filter(lambda w: isinstance(w, base.Window), self.windows_map.copy().values())
+        )
+
+    async def graceful_shutdown(self) -> None:
+        """Try to close windows gracefully before exiting"""
+        # Copy in case the dictionary changes during the loop
+        for win in self.normal_windows():
+            win.kill()
+
+        # give everyone a little time to exit and write their state. but don't
+        # sleep forever (1s).
+        end = time.time() + 1
+        while time.time() < end:
+            await asyncio.sleep(0.1)
+            if len(self.normal_windows()) == 0:
+                break
 
     @expose_command()
     def restart(self) -> None:
@@ -287,8 +295,7 @@ class Qtile(CommandObject):
 
     def _stop(self) -> None:
         logger.debug("Stopping qtile")
-        if self._stopped_event is not None:
-            self._stopped_event.set()
+        self._stopped_event.set()
 
     def dump_state(self, buf: Any) -> None:
         try:
@@ -351,7 +358,6 @@ class Qtile(CommandObject):
         self._finalize_configurables()
         remove_dbus_rules()
         inhibitor.stop()
-        cancel_tasks()
         self.core.finalize()
 
     def add_autogen_group(self, screen_idx: int) -> _Group:
@@ -1338,7 +1344,7 @@ class Qtile(CommandObject):
         # std{in,out,err} should be /dev/null
         with open("/dev/null") as null:
             file_actions: list[tuple] = [
-                (os.POSIX_SPAWN_DUP2, 0, null.fileno()),
+                (os.POSIX_SPAWN_DUP2, null.fileno(), 0),
                 (os.POSIX_SPAWN_DUP2, 1, null.fileno()),
                 (os.POSIX_SPAWN_DUP2, 2, null.fileno()),
             ]

@@ -5,7 +5,7 @@ import typing
 from abc import ABCMeta, abstractmethod
 
 from libqtile.command.base import CommandObject, expose_command
-from libqtile.config import ScreenRect
+from libqtile.config import Screen, ScreenRect
 
 if typing.TYPE_CHECKING:
     from typing import Any
@@ -102,9 +102,6 @@ class Core(CommandObject, metaclass=ABCMeta):
     def flush(self) -> None:
         """If needed, flush the backend's event queue."""
 
-    def graceful_shutdown(self):
-        """Try to close windows gracefully before exiting"""
-
     def simulate_keypress(self, modifiers: list[str], key: str) -> None:
         """Simulate a keypress with given modifiers"""
 
@@ -120,3 +117,7 @@ class Core(CommandObject, metaclass=ABCMeta):
     def info(self) -> dict[str, Any]:
         """Get basic information about the running backend."""
         return {"backend": self.name, "display_name": self.display_name}
+
+    def check_screen_fullscreen_background(self, screen: Screen | None = None) -> None:
+        """Toggles fullscreen background if any window on the screen is fullscreen."""
+        # Wayland only

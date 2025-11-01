@@ -1,34 +1,12 @@
-# Copyright (c) 2019 Aldo Cortesi
-# Copyright (c) 2019 Sean Vig
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import os
-import signal
-import time
 from typing import TYPE_CHECKING
 
 import xcffib
+import xcffib.randr
 import xcffib.render
 import xcffib.xproto
 import xcffib.xtest
@@ -44,6 +22,26 @@ from libqtile.utils import QtileError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+
+EVENT_TO_HANDLER = {
+    xcffib.xproto.ButtonPressEvent: "handle_ButtonPress",
+    xcffib.xproto.ButtonReleaseEvent: "handle_ButtonRelease",
+    xcffib.xproto.ClientMessageEvent: "handle_ClientMessage",
+    xcffib.xproto.ConfigureRequestEvent: "handle_ConfigureRequest",
+    xcffib.xproto.DestroyNotifyEvent: "handle_DestroyNotify",
+    xcffib.xproto.EnterNotifyEvent: "handle_EnterNotify",
+    xcffib.xproto.ExposeEvent: "handle_Expose",
+    xcffib.xproto.FocusOutEvent: "handle_FocusOut",
+    xcffib.xproto.KeyPressEvent: "handle_KeyPress",
+    xcffib.xproto.LeaveNotifyEvent: "handle_LeaveNotify",
+    xcffib.xproto.MappingNotifyEvent: "handle_MappingNotify",
+    xcffib.xproto.MapRequestEvent: "handle_MapRequest",
+    xcffib.xproto.MotionNotifyEvent: "handle_MotionNotify",
+    xcffib.xproto.PropertyNotifyEvent: "handle_PropertyNotify",
+    xcffib.randr.ScreenChangeNotifyEvent: "handle_ScreenChangeNotify",
+    xcffib.xproto.SelectionNotifyEvent: "handle_SelectionNotify",
+    xcffib.xproto.UnmapNotifyEvent: "handle_UnmapNotify",
+}
 
 _IGNORED_EVENTS = {
     xcffib.xproto.CreateNotifyEvent,
@@ -288,6 +286,10 @@ class Core(base.Core):
         self._root.set_input_focus()
         self._root.set_property("_NET_ACTIVE_WINDOW", self._root.wid)
 
+    def clear_focus(self):
+        """Clear _NET_ACTIVE_WINDOW so that there is no focused window"""
+        self._root.set_property("_NET_ACTIVE_WINDOW", 0)
+
     def convert_selection(self, selection_atom, _type="UTF8_STRING") -> None:
         type_atom = self.conn.atoms[_type]
         self.conn.conn.core.ConvertSelection(
@@ -300,11 +302,8 @@ class Core(base.Core):
 
     def handle_event(self, event):
         """Handle an X11 event by forwarding it to the right target"""
-        event_type = event.__class__.__name__
-        if event_type.endswith("Event"):
-            event_type = event_type[:-5]
-        targets = self._get_target_chain(event_type, event)
-        logger.debug("X11 event: %s (targets: %s)", event_type, targets)
+        targets = self._get_target_chain(event)
+        logger.debug("X11 event: %s (targets: %s)", event.__class__.__name__, targets)
         for target in targets:
             ret = target(event)
             if not ret:
@@ -371,7 +370,7 @@ class Core(base.Core):
             self._motion_notify = None
         self.flush()
 
-    def _get_target_chain(self, event_type: str, event) -> list[Callable]:
+    def _get_target_chain(self, event) -> list[Callable]:
         """Returns a chain of targets that can handle this event
 
         Finds functions named `handle_X`, either on the window object itself or
@@ -384,21 +383,26 @@ class Core(base.Core):
         """
         assert self.qtile is not None
 
-        handler = f"handle_{event_type}"
+        handler = EVENT_TO_HANDLER.get(event.__class__)
+
+        # If handler is None, this event has no handler and should be ignored
+        if handler is None:
+            return []
+
         # Certain events expose the affected window id as an "event" attribute.
-        event_events = [
-            "EnterNotify",
-            "LeaveNotify",
-            "MotionNotify",
-            "ButtonPress",
-            "ButtonRelease",
-            "KeyPress",
-        ]
+        event_events = {
+            xcffib.xproto.EnterNotifyEvent,
+            xcffib.xproto.LeaveNotifyEvent,
+            xcffib.xproto.MotionNotifyEvent,
+            xcffib.xproto.ButtonPressEvent,
+            xcffib.xproto.ButtonReleaseEvent,
+            xcffib.xproto.KeyPressEvent,
+        }
         if hasattr(event, "window"):
             window = self.qtile.windows_map.get(event.window)
         elif hasattr(event, "drawable"):
             window = self.qtile.windows_map.get(event.drawable)
-        elif event_type in event_events:
+        elif event.__class__ in event_events:
             window = self.qtile.windows_map.get(event.event)
         else:
             window = None
@@ -878,8 +882,7 @@ class Core(base.Core):
             try:
                 if window.group.screen is not qtile.current_screen:
                     qtile.focus_screen(window.group.screen.index, warp=False)
-                qtile.current_group.focus(window, False)
-                window.focus(False)
+                qtile.current_group.focus(window, warp=False)
             except AttributeError:
                 # probably clicked an internal window
                 screen = qtile.find_screen(e.root_x, e.root_y)
@@ -896,43 +899,6 @@ class Core(base.Core):
 
     def flush(self):
         self.conn.flush()
-
-    def graceful_shutdown(self):
-        """Try to close windows gracefully before exiting"""
-
-        try:
-            pids = []
-            for win in self.qtile.windows_map.values():
-                if not isinstance(win, base.Internal):
-                    if pid := win.get_pid():
-                        pids.append(pid)
-        except xcffib.ConnectionException:
-            logger.warning("Server disconnected, couldn't close windows gracefully.")
-            return
-
-        # Give the windows a chance to shut down nicely.
-        for pid in pids:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                # might have died recently
-                pass
-
-        def still_alive(pid):
-            # most pids will not be children, so we can't use wait()
-            try:
-                os.kill(pid, 0)
-                return True
-            except OSError:
-                return False
-
-        # give everyone a little time to exit and write their state. but don't
-        # sleep forever (1s).
-        for i in range(10):
-            pids = list(filter(still_alive, pids))
-            if len(pids) == 0:
-                break
-            time.sleep(0.1)
 
     def get_mouse_position(self) -> tuple[int, int]:
         """

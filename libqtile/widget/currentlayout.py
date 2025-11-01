@@ -1,29 +1,3 @@
-# Copyright (c) 2011 Florian Mounier
-# Copyright (c) 2011 Kenji_Takahashi
-# Copyright (c) 2012 roger
-# Copyright (c) 2012, 2014 Tycho Andersen
-# Copyright (c) 2012 Maximilian Köhl
-# Copyright (c) 2013 Craig Barnes
-# Copyright (c) 2014 Sean Vig
-# Copyright (c) 2014 Adi Sieker
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
 import itertools
 import os
 
@@ -108,10 +82,10 @@ class CurrentLayout(base._TextBox):
         if self.mode == "text":
             return base._TextBox.calculate_length(self)
         elif self.mode == "icon":
-            return self.img_length + self.actual_padding * 2
+            return self.img_length + self.padding * 2
         # self.mode == "both"
         # add only one padding because base._TextBox.calculate_length already add two
-        return base._TextBox.calculate_length(self) + self.img_length + self.actual_padding
+        return base._TextBox.calculate_length(self) + self.img_length + self.padding
 
     def hook_response(self, layout, group):
         if group.screen is not None and group.screen == self.bar.screen:
@@ -158,41 +132,37 @@ class CurrentLayout(base._TextBox):
         translatex, translatey = self.width, self.height
 
         if self.mode == "both":
+            y = (self.bar.size - self.layout.height) / 2 + 1
             if self.bar.horizontal:
-                height = self.bar.height
                 if self.icon_first:
                     # padding - icon - padding - text - padding
-                    x = self.actual_padding + self.img_length + self.actual_padding
-                    translatex -= base._TextBox.calculate_length(self) - self.actual_padding
+                    x = self.padding + self.img_length + self.padding
+                    translatex -= base._TextBox.calculate_length(self) - self.padding
                 else:
                     # padding - text - padding - icon - padding
-                    x = self.actual_padding
-                    translatex += base._TextBox.calculate_length(self) - self.actual_padding
+                    x = self.padding
+                    translatex += base._TextBox.calculate_length(self) - self.padding
             elif self.rotate:
-                height = self.bar.width
                 if self.icon_first:
                     # padding - icon - padding - text - padding
-                    x = self.actual_padding + self.img_length + self.actual_padding
-                    translatey -= base._TextBox.calculate_length(self) - self.actual_padding
+                    x = self.padding + self.img_length + self.padding
+                    translatey -= base._TextBox.calculate_length(self) - self.padding
                 else:
                     # padding - text - padding - icon - padding
-                    x = self.actual_padding
-                    translatey += base._TextBox.calculate_length(self) - self.actual_padding
+                    x = self.padding
+                    translatey += base._TextBox.calculate_length(self) - self.padding
             else:
                 x = 0
                 if self.icon_first:
                     # padding - icon - padding - text - padding
-                    height = self.actual_padding + self.img_length + self.actual_padding
-                    translatey -= base._TextBox.calculate_length(self) - self.actual_padding
+                    y = self.padding + self.img_length + self.padding
+                    translatey -= base._TextBox.calculate_length(self) - self.padding
                 else:
                     # padding - text - padding - icon - padding
-                    height = self.actual_padding
-                    translatey += base._TextBox.calculate_length(self) - self.actual_padding
-                # neutralize all math in the layout.draw() below
-                # to simulate starting height from zero
-                height = (height * 2) + self.layout.height - 2
+                    y = self.padding
+                    translatey += base._TextBox.calculate_length(self) - self.padding
 
-            self.layout.draw(x, int(height / 2 - self.layout.height / 2) + 1)
+            self.layout.draw(x, y)
 
         if not self.bar.horizontal and self.rotate:
             translatex, translatey = translatey, translatex
@@ -247,9 +217,7 @@ class CurrentLayout(base._TextBox):
         """
         Loads layout icons.
         """
-        width = (self.bar.width - 2) * self.scale if not self.bar.horizontal else None
-        height = (self.bar.height - 2) * self.scale if self.bar.horizontal else None
-
+        new_height = (self.bar.size - 2) * self.scale
         for names in self._get_layout_names():
             layout_name = names[0]
             # Python doesn't have an ordered set but we can use a dictionary instead
@@ -267,9 +235,10 @@ class CurrentLayout(base._TextBox):
 
             img = Img.from_path(icon_file_path)
 
-            img.resize(width=width, height=height)
-            if img.width > self.img_length:
-                self.img_length = img.width
+            img.resize(height=new_height)
+            img_length = img.width if self.bar.horizontal else img.height
+            if img_length > self.img_length:
+                self.img_length = img_length
 
             self.surfaces[layout_name] = img
 
